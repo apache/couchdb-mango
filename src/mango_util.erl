@@ -15,6 +15,7 @@
 
 -export([
     open_doc/2,
+    open_doc/3,
     open_ddocs/1,
     load_ddoc/2,
 
@@ -36,6 +37,8 @@
     lucene_escape_user/1,
 
     has_suffix/2,
+
+    check_lang/1,
 
     join/2
 ]).

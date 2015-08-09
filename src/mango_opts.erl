@@ -14,7 +14,8 @@
 
 -export([
     validate_idx_create/1,
-    validate_find/1
+    validate_find/1,
+    validate_bulk_delete/1
 ]).
 
 -export([
@@ -31,8 +32,7 @@
     validate_use_index/1,
     validate_bookmark/1,
     validate_sort/1,
-    validate_fields/1,
-    validate_bulk_delete/1
+    validate_fields/1
 ]).
 
 
@@ -209,9 +209,8 @@ validate_selector(Else) ->
     ?MANGO_ERROR({invalid_selector_json, Else}).
 
 
-%% We re-use validate_use_index to make sure the index names are valid
 validate_bulk_docs(Docs) when is_list(Docs) ->
-    lists:foreach(fun validate_use_index/1, Docs),
+    lists:foreach(fun ?MODULE:is_string/1, Docs),
     {ok, Docs};
 validate_bulk_docs(Else) ->
     ?MANGO_ERROR({invalid_bulk_docs, Else}).

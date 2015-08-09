@@ -172,8 +172,8 @@ class IndexCrudTests(mango.DbPerClass):
         docids.append("_design/this_is_not_an_index_name")
 
         ret = self.db.bulk_delete(docids)
-
-        assert ret["fail"][0]["id"] == "_design/this_is_not_an_index_name"
+        print ret
+        assert ret["error"][0]["id"] == "_design/this_is_not_an_index_name"
         assert len(ret["success"]) == 3
 
         for idx in self.db.list_indexes():
