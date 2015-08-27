@@ -12,7 +12,7 @@
 
 -module(mango_httpd_handlers).
 
--export([url_handler/1, db_handler/1, design_handler/1]).
+-export([url_handler/1, db_handler/1, design_handler/1, endpoints/1]).
 
 url_handler(_) -> no_match.
 
@@ -22,3 +22,23 @@ db_handler(<<"_find">>)         -> fun mango_httpd:handle_req/2;
 db_handler(_) -> no_match.
 
 design_handler(_) -> no_match.
+
+endpoints(url_handler) ->
+    [];
+endpoints(db_handler) ->
+    [
+        <<"_index">>,
+        <<"_explain">>,
+        <<"_find">>
+    ];
+endpoints(design_handler) ->
+    [].
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+mango_endpoints_test_() ->
+    Apps = [couch_epi, mango],
+    chttpd_httpd_handlers_test_util:endpoints_test(mango, ?MODULE, Apps).
+
+-endif.
