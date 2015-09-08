@@ -34,10 +34,15 @@
     lucene_escape_field/1,
     lucene_escape_query_value/1,
     lucene_escape_user/1,
+    is_number_string/1,
 
     has_suffix/2,
 
-    join/2
+    join/2,
+
+    parse_field/1,
+
+    cached_re/2
 ]).
 
 
@@ -45,8 +50,37 @@
 -include("mango.hrl").
 
 
+-define(DIGITS, "(\\p{N}+)").
+-define(HEXDIGITS, "([0-9a-fA-F]+)").
+-define(EXP, "[eE][+-]?" ++ ?DIGITS).
+-define(NUMSTRING,
+"[\\x00-\\x20]*" ++ "[+-]?(" ++ "NaN|"
+     ++ "Infinity|" ++ "((("
+     ++ ?DIGITS
+     ++ "(\\.)?("
+     ++ ?DIGITS
+     ++ "?)("
+     ++ ?EXP
+     ++ ")?)|"
+     ++ "(\\.("
+     ++ ?DIGITS
+     ++ ")("
+     ++ ?EXP
+     ++ ")?)|"
+     ++ "(("
+     ++ "(0[xX]"
+     ++ ?HEXDIGITS
+     ++ "(\\.)?)|"
+     ++ "(0[xX]"
+     ++ ?HEXDIGITS
+     ++ "?(\\.)"
+     ++ ?HEXDIGITS
+     ++ ")"
+     ++ ")[pP][+-]?" ++ ?DIGITS ++ "))" ++ "[fFdD]?))" ++ "[\\x00-\\x20]*").
+
+
 open_doc(Db, DocId) ->
-    open_doc(Db, DocId, [deleted]).
+    open_doc(Db, DocId, [deleted, ejson_body]).
 
 
 open_doc(Db, DocId, Options) ->
@@ -287,7 +321,7 @@ lucene_escape_qv(<<C, Rest/binary>>) ->
 
 
 lucene_escape_user(Field) ->
-    {ok, Path} = mango_doc:parse_field(Field),
+    {ok, Path} = parse_field(Field),
     Escaped = [mango_util:lucene_escape_field(P) || P <- Path],
     iolist_to_binary(join(".", Escaped)).
 
@@ -310,3 +344,80 @@ join(_Sep, [Item]) ->
     [Item];
 join(Sep, [Item | Rest]) ->
     [Item, Sep | join(Sep, Rest)].
+
+
+is_number_string(Value) when is_binary(Value) ->
+    is_number_string(binary_to_list(Value));
+is_number_string(Value) when is_list(Value)->
+    MP = cached_re(mango_numstring_re, ?NUMSTRING),
+    case re:run(Value, MP) of
+        nomatch ->
+            false;
+        _ ->
+            true
+    end.
+
+
+cached_re(Name, RE) ->
+    case mochiglobal:get(Name) of
+        undefined ->
+            {ok, MP} = re:compile(RE),
+            ok = mochiglobal:put(Name, MP),
+            MP;
+        MP ->
+            MP
+    end.
+
+
+parse_field(Field) ->
+    case binary:match(Field, <<"\\">>, []) of
+        nomatch ->
+            % Fast path, no regex required
+            {ok, check_non_empty(Field, binary:split(Field, <<".">>, [global]))};
+        _ ->
+            parse_field_slow(Field)
+    end.
+
+parse_field_slow(Field) ->
+    Path = lists:map(fun
+        (P) when P =:= <<>> ->
+            ?MANGO_ERROR({invalid_field_name, Field});
+        (P) ->
+            re:replace(P, <<"\\\\">>, <<>>, [global, {return, binary}])
+    end, re:split(Field, <<"(?<!\\\\)\\.">>)),
+    {ok, Path}.
+
+check_non_empty(Field, Parts) ->
+    case lists:member(<<>>, Parts) of
+        true ->
+            ?MANGO_ERROR({invalid_field_name, Field});
+        false ->
+            Parts
+    end.
+
+
+-ifdef(TEST).
+-include_lib("eunit/include/eunit.hrl").
+
+parse_field_test() ->
+    ?assertEqual({ok, [<<"ab">>]}, parse_field(<<"ab">>)),
+    ?assertEqual({ok, [<<"a">>, <<"b">>]}, parse_field(<<"a.b">>)),
+    ?assertEqual({ok, [<<"a.b">>]}, parse_field(<<"a\\.b">>)),
+    ?assertEqual({ok, [<<"a">>, <<"b">>, <<"c">>]}, parse_field(<<"a.b.c">>)),
+    ?assertEqual({ok, [<<"a">>, <<"b.c">>]}, parse_field(<<"a.b\\.c">>)),
+    Exception = {mango_error, ?MODULE, {invalid_field_name, <<"a..b">>}},
+    ?assertThrow(Exception, parse_field(<<"a..b">>)).
+
+is_number_string_test() ->
+    ?assert(is_number_string("0")),
+    ?assert(is_number_string("1")),
+    ?assert(is_number_string("1.0")),
+    ?assert(is_number_string("1.0E10")),
+    ?assert(is_number_string("0d")),
+    ?assert(is_number_string("-1")),
+    ?assert(is_number_string("-1.0")),
+    ?assertNot(is_number_string("hello")),
+    ?assertNot(is_number_string("")),
+    ?assertMatch({match, _}, re:run("1.0", mochiglobal:get(mango_numstring_re))).
+
+-endif.

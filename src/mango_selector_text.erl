@@ -25,6 +25,10 @@
 -include("mango.hrl").
 
 
+%% Regex for <<"\\.">>
+-define(PERIOD, "\\.").
+
+
 convert(Object) ->
     TupleTree = convert([], Object),
     iolist_to_binary(to_query(TupleTree)).
@@ -45,7 +49,8 @@ convert(Path, {[{<<"$default">>, Arg}]}) ->
 % The $text operator specifies a Lucene syntax query
 % so we just pull it in directly.
 convert(Path, {[{<<"$text">>, Query}]}) when is_binary(Query) ->
-    {op_field, {make_field(Path, Query), value_str(Query)}};
+    Value = maybe_append_quotes(value_str(Query)),
+    {op_field, {make_field(Path, Query), Value}};
 
 % The MongoDB docs for $all are super confusing and read more
 % like they screwed up the implementation of this operator
@@ -70,7 +75,7 @@ convert(Path, {[{<<"$all">>, Args}]}) ->
         _ ->
             % Otherwise the $all operator is equivalent to an $and
             % operator so we treat it as such.
-            convert(Path, {[{<<"$eq">> , Args}]})
+            convert([<<"[]">> | Path], {[{<<"$and">>, Args}]})
     end;
 
 % The $elemMatch Lucene query is not an exact translation
@@ -142,11 +147,15 @@ convert(Path, {[{<<"$type">>, _}]}) ->
 convert(Path, {[{<<"$mod">>, _}]}) ->
     field_exists_query(Path, "number");
 
+% The lucene regular expression engine does not use java's regex engine but
+% instead a custom implementation. The syntax is therefore different, so we do
+% would get different behavior than our view indexes. To be consistent, we will
+% simply return docs for fields that exist and then run our match filter.
 convert(Path, {[{<<"$regex">>, _}]}) ->
     field_exists_query(Path, "string");
 
 convert(Path, {[{<<"$size">>, Arg}]}) ->
-    {op_field, {make_field(Path, length), value_str(Arg)}};
+    {op_field, {make_field([<<"[]">> | Path], length), value_str(Arg)}};
 
 % All other operators are internal assertion errors for
 % matching because we either should've removed them during
@@ -154,12 +163,36 @@ convert(Path, {[{<<"$size">>, Arg}]}) ->
 convert(_Path, {[{<<"$", _/binary>>=Op, _}]}) ->
     ?MANGO_ERROR({invalid_operator, Op});
 
-% We've hit a field name specifier. We need to break the name
-% into path parts and continue our conversion.
-convert(Path, {[{Field, Cond}]}) ->
-    NewPathParts = re:split(Field, <<"\\.">>),
-    NewPath = lists:reverse(NewPathParts) ++ Path,
-    convert(NewPath, Cond);
+% We've hit a field name specifier. Check if the field name is accessing
+% arrays. Convert occurrences of element position references to .[]. Then we
+% need to break the name into path parts and continue our conversion.
+convert(Path, {[{Field0, Cond}]}) ->
+    {ok, PP0} = case Field0 of
+        <<>> ->
+            {ok, []};
+        _ ->
+            mango_util:parse_field(Field0)
+    end,
+    % Later on, we perform a lucene_escape_user call on the
+    % final Path, which calls parse_field again. Calling the function
+    % twice converts <<"a\\.b">> to [<<"a">>,<<"b">>]. This leads to
+    % an incorrect query since we need [<<"a.b">>]. Without breaking
+    % our escaping mechanism, we simply revert this first parse_field
+    % effect and replace instances of "." to "\\.".
+    MP = mango_util:cached_re(mango_period, ?PERIOD),
+    PP1 = [re:replace(P, MP, <<"\\\\.">>,
+        [global,{return,binary}]) || P <- PP0],
+    {PP2, HasInteger} = replace_array_indexes(PP1, [], false),
+    NewPath = PP2 ++ Path,
+    case HasInteger of
+        true ->
+            OldPath = lists:reverse(PP1, Path),
+            OldParts = convert(OldPath, Cond),
+            NewParts = convert(NewPath, Cond),
+            {op_or, [OldParts, NewParts]};
+        false ->
+            convert(NewPath, Cond)
+    end;
 
 %% For $in
 convert(Path, Val) when is_binary(Val); is_number(Val); is_boolean(Val) ->
@@ -259,7 +292,7 @@ field_exists_query(Path) ->
 
 
 field_exists_query(Path, Type) ->
-    {op_fieldname, [path_str(Path), ":", Type]}.
+    {op_fieldname, {[path_str(Path), ":"], Type}}.
 
 
 path_str(Path) ->
@@ -273,7 +306,13 @@ path_str([Part], Acc) ->
     % during recursion of convert.
     [Part | Acc];
 path_str([Part | Rest], Acc) ->
-    path_str(Rest, [<<".">>, Part | Acc]).
+    case Part of
+        % do not append a period if Part is blank
+        <<>> ->
+            path_str(Rest, [Acc]);
+        _ ->
+            path_str(Rest, [<<".">>, Part | Acc])
+    end.
 
 
 type_str(Value) when is_number(Value) ->
@@ -315,6 +354,15 @@ append_sort_type(RawSortField, Selector) ->
     end.
 
 
+maybe_append_quotes(TextValue) ->
+    case mango_util:is_number_string(TextValue) of
+        true ->
+            <<"\"", TextValue/binary, "\"">>;
+        false ->
+            TextValue
+    end.
+
+
 get_sort_type(Field, Selector) ->
     Types = get_sort_types(Field, Selector, []),
     case lists:usort(Types) of
@@ -342,3 +390,16 @@ get_sort_types(Field, {[{_, Cond}]}, Acc)  when is_tuple(Cond)->
 
 get_sort_types(_Field, _, Acc)  ->
     Acc.
+
+
+replace_array_indexes([], NewPartsAcc, HasIntAcc) ->
+    {NewPartsAcc, HasIntAcc};
+replace_array_indexes([Part | Rest], NewPartsAcc, HasIntAcc) ->
+    {NewPart, HasInt} = try
+        _ = list_to_integer(binary_to_list(Part)),
+        {<<"[]">>, true}
+    catch _:_ ->
+        {Part, false}
+    end,
+    replace_array_indexes(Rest, [NewPart | NewPartsAcc],
+         HasInt or HasIntAcc).

@@ -13,9 +13,14 @@
 import random
 
 import mango
-
+import unittest
 
 class IndexCrudTests(mango.DbPerClass):
+    @classmethod
+    def setUpClass(klass):
+        raise unittest.SkipTest('text index service not available')
+        super(KeyTests, klass).setUpClass()
+
     def test_bad_fields(self):
         bad_fields = [
             None,
@@ -222,6 +227,47 @@ class IndexCrudTests(mango.DbPerClass):
             assert e.response.status_code == 404
         else:
             raise AssertionError("bad index delete")
+
+    @unittest.skip
+    def test_create_text_idx(self):
+        fields = [
+            {"name":"stringidx", "type" : "string"},
+            {"name":"booleanidx", "type": "boolean"}
+        ]
+        ret = self.db.create_text_index(fields=fields, name="text_idx_01")
+        assert ret is True
+        for idx in self.db.list_indexes():
+            if idx["name"] != "text_idx_01":
+                continue
+            print idx["def"]
+            assert idx["def"]["fields"] == [
+                {"stringidx": "string"},
+                {"booleanidx": "boolean"}
+            ]
+            return
+        raise AssertionError("index not created")
+
+    @unittest.skip
+    def test_create_bad_text_idx(self):
+        bad_fields = [
+            True,
+            False,
+            "bing",
+            2.0,
+            ["foo", "bar"],
+            [{"name": "foo2"}],
+            [{"name": "foo3", "type": "garbage"}],
+            [{"type": "number"}],
+            [{"name": "age", "type": "number"} , {"name": "bad"}],
+            [{"name": "age", "type": "number"} , "bla"]
+        ]
+        for fields in bad_fields:
+            try:
+                self.db.create_text_index(fields=fields)
+            except Exception, e:
+                assert e.response.status_code == 400
+            else:
+                raise AssertionError("bad create text index")
 
     def test_limit_skip_index(self):
         fields = ["field1"]

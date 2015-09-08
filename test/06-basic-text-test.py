@@ -14,6 +14,7 @@ import json
 import mango
 import unittest
 import user_docs
+import num_string_docs
 
 
 class TextIndexCheckTests(mango.DbPerClass):
@@ -26,14 +27,14 @@ class TextIndexCheckTests(mango.DbPerClass):
             'type': 'text'
         })
         resp = self.db.sess.post(self.db.path("_index"), data=body)
-        assert resp.status_code == 501, resp
+        assert resp.status_code == 503, resp
 
 
 class BasicTextTests(mango.UserDocsTextTests):
 
     @classmethod
     def setUpClass(klass):
-        raise unittest.SkipTest('text index is not supported yet')
+        raise unittest.SkipTest('text index service not available')
 
     def test_simple(self):
         docs = self.db.find({"$text": "Stephanie"})
@@ -57,6 +58,28 @@ class BasicTextTests(mango.UserDocsTextTests):
         docs = self.db.find({"name.first": "Stephanie", "favorites": faves})
         assert docs[0]["name"]["first"] == "Stephanie"
         assert docs[0]["favorites"] == faves
+
+    def test_array_ref(self):
+        docs = self.db.find({"favorites.1": "Python"})
+        assert len(docs) == 4
+        for d in docs:
+            assert "Python" in d["favorites"]
+
+        # Nested Level
+        docs = self.db.find({"favorites.0.2": "Python"})
+        print len(docs)
+        assert len(docs) == 1
+        for d in docs:
+            assert "Python" in d["favorites"][0][2]
+
+    def test_number_ref(self):
+        docs = self.db.find({"11111": "number_field"})
+        assert len(docs) == 1
+        assert docs[0]["11111"] == "number_field"
+
+        docs = self.db.find({"22222.33333": "nested_number_field"})
+        assert len(docs) == 1
+        assert docs[0]["22222"]["33333"] == "nested_number_field"
 
     def test_lt(self):
         docs = self.db.find({"age": {"$lt": 22}})
@@ -394,6 +417,15 @@ class BasicTextTests(mango.UserDocsTextTests):
         docs = self.db.find(q)
         assert len(docs) == 1
 
+    def test_regex(self):
+        docs = self.db.find({
+                "age": {"$gt": 40},
+                "location.state": {"$regex": "(?i)new.*"}
+            })
+        assert len(docs) == 2
+        assert docs[0]["user_id"] == 2
+        assert docs[1]["user_id"] == 10
+
     # test lucene syntax in $text
 
 
@@ -401,7 +433,25 @@ class ElemMatchTests(mango.FriendDocsTextTests):
 
     @classmethod
     def setUpClass(klass):
-        raise unittest.SkipTest('text index is not supported yet')
+        raise unittest.SkipTest('text index service not available')
+
+    def test_elem_match_non_object(self):
+        q = {"bestfriends":{
+                "$elemMatch":
+                    {"$eq":"Wolverine", "$eq":"Cyclops"}
+            }
+        }
+        docs = self.db.find(q)
+        print len(docs)
+        assert len(docs) == 1
+        assert docs[0]["bestfriends"] == ["Wolverine", "Cyclops"]
+
+        q = {"results": {"$elemMatch": {"$gte": 80, "$lt": 85}}}
+
+        docs = self.db.find(q)
+        print len(docs)
+        assert len(docs) == 1
+        assert docs[0]["results"] == [82, 85, 88]
 
     def test_elem_match(self):
         q = {"friends": {
@@ -511,3 +561,37 @@ class ElemMatchTests(mango.FriendDocsTextTests):
         assert len(docs) == 3
         for d in docs:
             assert d["user_id"] in (10, 11,12)
+
+
+# Test numeric strings for $text
+class NumStringTests(mango.NumStringDocsTextTests):
+
+    @classmethod
+    def setUpClass(klass):
+        raise unittest.SkipTest('text index service not available')
+
+    def test_floating_point_val(self):
+        float_point_string = num_string_docs.DOCS[2]["number_string"]
+        q = {"$text": float_point_string}
+        docs = self.db.find(q)
+        assert len(docs) == 1
+        assert docs[0]["number_string"] == float_point_string
+
+    def test_hex_floating_point_val(self):
+        hex_float_point_string = num_string_docs.DOCS[3]["number_string"]
+        q = {"$text": hex_float_point_string}
+        docs = self.db.find(q)
+        assert len(docs) == 1
+        assert docs[0]["number_string"] == hex_float_point_string
+
+    def test_nan_val(self):
+        q = {"$text": "NaN"}
+        docs = self.db.find(q)
+        assert len(docs) == 1
+        assert docs[0]["number_string"] == "NaN"
+
+    def test_infinity_val(self):
+        q = {"$text": "Infinity"}
+        docs = self.db.find(q)
+        assert len(docs) == 1
+        assert docs[0]["number_string"] == "Infinity"

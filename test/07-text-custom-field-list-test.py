@@ -18,7 +18,7 @@ class CustomFieldsTest(mango.UserDocsTextTests):
 
     @classmethod
     def setUpClass(klass):
-        raise unittest.SkipTest('text index is not supported yet')
+        raise unittest.SkipTest('text index service not available')
 
     FIELDS = [
         {"name": "favorites.[]", "type": "string"},
@@ -65,7 +65,7 @@ class CustomFieldsTest(mango.UserDocsTextTests):
         docs = self.db.find({"location.state": "New Hampshire"})
         assert len(docs) == 1
         assert docs[0]["user_id"] == 10
-    
+
     # Since our FIELDS list only includes "name\\.first", we should
     # get an error when we try to search for "name.first", since the index
     # for that field does not exist.
