@@ -15,7 +15,6 @@ import mango
 import unittest
 import user_docs
 import math
-import num_string_docs
 from hypothesis import given, assume, example
 import hypothesis.strategies as st
 
