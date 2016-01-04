@@ -48,11 +48,16 @@ create(Db, Selector0, Opts) ->
 
     UsableFilter = fun(I) -> mango_idx:is_usable(I, Selector) end,
     UsableIndexes = lists:filter(UsableFilter, SortIndexes),
-    if UsableIndexes /= [] -> ok; true ->
-        ?MANGO_ERROR({no_usable_index, selector_unsupported})
-    end,
 
-    create_cursor(Db, UsableIndexes, Selector, Opts).
+    case length(UsableIndexes) of
+        0 ->
+            % fallback to _id > null for better usability
+            NewSelector = {[{<<"$and">>, [Selector, {[{<<"_id">>, {[{<<"$gt">>, null}]}}]}]}]},
+            couch_log:notice("no matching index found, create an index to optimize query time", []),
+            create(Db, NewSelector, Opts);
+        _ ->
+            create_cursor(Db, UsableIndexes, Selector, Opts)
+    end.
 
 
 explain(#cursor{}=Cursor) ->
