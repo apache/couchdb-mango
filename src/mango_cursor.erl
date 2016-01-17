@@ -16,7 +16,8 @@
 -export([
     create/3,
     explain/1,
-    execute/3
+    execute/3,
+    maybe_filter_indexes/2
 ]).
 
 
@@ -53,7 +54,8 @@ create(Db, Selector0, Opts) ->
         0 ->
             % fallback to _id > null for better usability
             NewSelector = {[{<<"$and">>, [Selector, {[{<<"_id">>, {[{<<"$gt">>, null}]}}]}]}]},
-            couch_log:notice("no matching index found, create an index to optimize query time", []),
+            couch_log:warning("no matching index found, create an index to optimize query time", []),
+            couch_log:warning("~p", [Opts]),
             create(Db, NewSelector, Opts);
         _ ->
             create_cursor(Db, UsableIndexes, Selector, Opts)

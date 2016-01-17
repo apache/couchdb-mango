@@ -181,7 +181,7 @@ handle_find_req(#httpd{method='POST'}=Req, Db) ->
     chttpd:validate_ctype(Req, "application/json"),
     {ok, Opts0} = mango_opts:validate_find(chttpd:json_body_obj(Req)),
     {value, {selector, Sel}, Opts} = lists:keytake(selector, 1, Opts0),
-    {ok, Resp0} = start_find_resp(Req),
+    {ok, Resp0} = start_find_resp(Req, Db, Sel, Opts),
     {ok, AccOut} = run_find(Resp0, Db, Sel, Opts),
     end_find_resp(AccOut);
 
@@ -228,8 +228,37 @@ convert_to_design_id(DDocId) ->
     end.
 
 
-start_find_resp(Req) ->
-    chttpd:start_delayed_json_response(Req, 200, [], "{\"docs\":[").
+start_find_resp(Req, Db, Sel, Opts) ->
+    chttpd:start_delayed_json_response(Req, 200, [], maybeAddWarning(Db, Sel, Opts)).
+
+
+maybeAddWarning(Db, Selector0, Opts) ->
+    Selector = mango_selector:normalize(Selector0),
+
+    ExistingIndexes = mango_idx:list(Db),
+    if ExistingIndexes /= [] -> ok; true ->
+        ?MANGO_ERROR({no_usable_index, no_indexes_defined})
+    end,
+
+    FilteredIndexes = mango_cursor:maybe_filter_indexes(ExistingIndexes, Opts),
+    if FilteredIndexes /= [] -> ok; true ->
+        ?MANGO_ERROR({no_usable_index, no_index_matching_name})
+    end,
+
+    SortIndexes = mango_idx:for_sort(FilteredIndexes, Opts),
+    if SortIndexes /= [] -> ok; true ->
+        ?MANGO_ERROR({no_usable_index, missing_sort_index})
+    end,
+
+    UsableFilter = fun(I) -> mango_idx:is_usable(I, Selector) end,
+    UsableIndexes = lists:filter(UsableFilter, SortIndexes),
+
+    case length(UsableIndexes) of
+        0 ->
+            "{\"_warning\":\"no matching index found, create an index to optimize query time\",\r\n\"docs\":[";
+        _ ->
+            "{\"docs\":["
+    end.
 
 
 end_find_resp(Acc0) ->
