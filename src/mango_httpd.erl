@@ -229,30 +229,11 @@ convert_to_design_id(DDocId) ->
 
 
 start_find_resp(Req, Db, Sel, Opts) ->
-    chttpd:start_delayed_json_response(Req, 200, [], maybeAddWarning(Db, Sel, Opts)).
+    chttpd:start_delayed_json_response(Req, 200, [], maybe_add_warning(Db, Sel, Opts)).
 
 
-maybeAddWarning(Db, Selector0, Opts) ->
-    Selector = mango_selector:normalize(Selector0),
-
-    ExistingIndexes = mango_idx:list(Db),
-    if ExistingIndexes /= [] -> ok; true ->
-        ?MANGO_ERROR({no_usable_index, no_indexes_defined})
-    end,
-
-    FilteredIndexes = mango_cursor:maybe_filter_indexes(ExistingIndexes, Opts),
-    if FilteredIndexes /= [] -> ok; true ->
-        ?MANGO_ERROR({no_usable_index, no_index_matching_name})
-    end,
-
-    SortIndexes = mango_idx:for_sort(FilteredIndexes, Opts),
-    if SortIndexes /= [] -> ok; true ->
-        ?MANGO_ERROR({no_usable_index, missing_sort_index})
-    end,
-
-    UsableFilter = fun(I) -> mango_idx:is_usable(I, Selector) end,
-    UsableIndexes = lists:filter(UsableFilter, SortIndexes),
-
+maybe_add_warning(Db, Selector, Opts) ->
+    UsableIndexes = mango_idx:get_usable_indexes(Db, Selector, Opts),
     case length(UsableIndexes) of
         0 ->
             "{\"_warning\":\"no matching index found, create an index to optimize query time\",\r\n\"docs\":[";

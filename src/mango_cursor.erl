@@ -31,33 +31,18 @@
 
 create(Db, Selector0, Opts) ->
     Selector = mango_selector:normalize(Selector0),
+    UsableIndexes = mango_idx:get_usable_indexes(Db, Selector0, Opts),
 
-    ExistingIndexes = mango_idx:list(Db),
-    if ExistingIndexes /= [] -> ok; true ->
-        ?MANGO_ERROR({no_usable_index, no_indexes_defined})
-    end,
-
-    FilteredIndexes = maybe_filter_indexes(ExistingIndexes, Opts),
-    if FilteredIndexes /= [] -> ok; true ->
-        ?MANGO_ERROR({no_usable_index, no_index_matching_name})
-    end,
-
-    SortIndexes = mango_idx:for_sort(FilteredIndexes, Opts),
-    if SortIndexes /= [] -> ok; true ->
-        ?MANGO_ERROR({no_usable_index, missing_sort_index})
-    end,
-
-    UsableFilter = fun(I) -> mango_idx:is_usable(I, Selector) end,
-    UsableIndexes = lists:filter(UsableFilter, SortIndexes),
-
-    case length(UsableIndexes) of
-        0 ->
-            % fallback to _id > null for better usability
-            NewSelector = {[{<<"$and">>, [Selector, {[{<<"_id">>, {[{<<"$gt">>, null}]}}]}]}]},
-            couch_log:warning("no matching index found, create an index to optimize query time", []),
-            couch_log:warning("~p", [Opts]),
-            create(Db, NewSelector, Opts);
+    {use_index, IndexSpecified} = proplists:lookup(use_index, Opts),
+    case {length(UsableIndexes), length(IndexSpecified)} of
+        {0, 1} ->
+            ?MANGO_ERROR({no_usable_index, selector_unsupported});
+        {0, 0} ->
+            AllDocs = mango_idx:special(Db),
+            io:format("Index ~p~n", [AllDocs]),
+            create_cursor(Db, AllDocs, Selector, Opts);
         _ ->
+            io:format("Index ~p~n", ["UsableIndexes"]),
             create_cursor(Db, UsableIndexes, Selector, Opts)
     end.
 
