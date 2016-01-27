@@ -42,7 +42,9 @@
 
     parse_field/1,
 
-    cached_re/2
+    cached_re/2,
+
+    get_usable_indexes/3
 ]).
 
 
@@ -394,6 +396,27 @@ check_non_empty(Field, Parts) ->
         false ->
             Parts
     end.
+
+get_usable_indexes(Db, Selector0, Opts) ->
+    Selector = mango_selector:normalize(Selector0),
+
+    ExistingIndexes = mango_idx:list(Db),
+    if ExistingIndexes /= [] -> ok; true ->
+        ?MANGO_ERROR({no_usable_index, no_indexes_defined})
+    end,
+
+    FilteredIndexes = mango_cursor:maybe_filter_indexes(ExistingIndexes, Opts),
+    if FilteredIndexes /= [] -> ok; true ->
+        ?MANGO_ERROR({no_usable_index, no_index_matching_name})
+    end,
+
+    SortIndexes = mango_idx:for_sort(FilteredIndexes, Opts),
+    if SortIndexes /= [] -> ok; true ->
+        ?MANGO_ERROR({no_usable_index, missing_sort_index})
+    end,
+
+    UsableFilter = fun(I) -> mango_idx:is_usable(I, Selector) end,
+    lists:filter(UsableFilter, SortIndexes).
 
 
 -ifdef(TEST).
