@@ -31,15 +31,38 @@
 
 create(Db, Selector0, Opts) ->
     Selector = mango_selector:normalize(Selector0),
-    UsableIndexes = mango_util:get_usable_indexes(Db, Selector0, Opts),
-    io:format("UsableIndexes ~p~n", [UsableIndexes]),
+    %UsableIndexes = mango_util:get_usable_indexes(Db, Selector0, Opts),
 
-    case length(UsableIndexes) of
-        0 ->
+    ExistingIndexes = mango_idx:list(Db),
+    if ExistingIndexes /= [] -> ok; true ->
+        ?MANGO_ERROR({no_usable_index, no_indexes_defined})
+    end,
+
+    FilteredIndexes = maybe_filter_indexes(ExistingIndexes, Opts),
+    if FilteredIndexes /= [] -> ok; true ->
+        ?MANGO_ERROR({no_usable_index, no_index_matching_name})
+    end,
+
+    SortIndexes = mango_idx:for_sort(FilteredIndexes, Opts),
+    if SortIndexes /= [] -> ok; true ->
+        ?MANGO_ERROR({no_usable_index, missing_sort_index})
+    end,
+
+    UsableFilter = fun(I) -> mango_idx:is_usable(I, Selector) end,
+    UsableIndexes = lists:filter(UsableFilter, SortIndexes),
+
+    {use_index, IndexSpecified} = proplists:lookup(use_index, Opts),
+    case {length(UsableIndexes), length(IndexSpecified)} of
+        {0, 1} ->
+            io:format("UsableIndexesAllDocs ~p~n", [{0, 1}]),
+
+            create_cursor(Db, UsableIndexes, Selector, Opts);
+        {0, 0} ->
             AllDocs = mango_idx:special(Db),
-            io:format("UsableIndexesAllDocs ~p~n", [AllDocs]),
+            io:format("UsableIndexesAllDocs ~p~n", [{0, 0}]),
             create_cursor(Db, AllDocs, Selector, Opts);
         _ ->
+            io:format("UsableIndexesAllDocs ~p~n", ["_"]),
             create_cursor(Db, UsableIndexes, Selector, Opts)
     end.
 
