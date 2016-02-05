@@ -239,7 +239,7 @@ class BasicFindTests(mango.UserDocsTests):
         try:
             self.db.find({})
         except Exception, e:
-            assert e.response.status_code == 400
+            assert e.response.status_code == 200
         else:
             raise AssertionError("bad find")
 
