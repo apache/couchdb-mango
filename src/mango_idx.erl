@@ -267,7 +267,7 @@ end_key(#idx{}=Idx, Ranges) ->
 cursor_mod(#idx{type = <<"json">>}) ->
     mango_cursor_view;
 cursor_mod(#idx{def = all_docs, type= <<"special">>}) ->
-    mango_cursor_view;
+    mango_cursor_special;
 cursor_mod(#idx{type = <<"text">>}) ->
     case module_loaded(dreyfus_index) of
         true ->

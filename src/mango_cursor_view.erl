@@ -19,7 +19,9 @@
 ]).
 
 -export([
-    handle_message/2
+    handle_message/2,
+    composite_indexes/2,
+    choose_best_index/2
 ]).
 
 
@@ -66,7 +68,6 @@ explain(Cursor) ->
 
 
 execute(#cursor{db = Db, index = Idx} = Cursor0, UserFun, UserAcc) ->
-    io:format("execute cursor index ~p~n", [Idx]),
     Cursor = Cursor0#cursor{
         user_fun = UserFun,
         user_acc = UserAcc
@@ -76,7 +77,6 @@ execute(#cursor{db = Db, index = Idx} = Cursor0, UserFun, UserAcc) ->
             % empty indicates unsatisfiable ranges, so don't perform search
             {ok, UserAcc};
         _ ->
-            io:format("execute cursor index ~p~p~n", [Idx, Cursor#cursor.ranges]),
             BaseArgs = #mrargs{
                 view_type = map,
                 reduce = false,

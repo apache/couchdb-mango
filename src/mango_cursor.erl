@@ -39,10 +39,8 @@ create(Db, Selector0, Opts) ->
             ?MANGO_ERROR({no_usable_index, selector_unsupported});
         {0, 0} ->
             AllDocs = mango_idx:special(Db),
-            io:format("Index ~p~n", [AllDocs]),
             create_cursor(Db, AllDocs, Selector, Opts);
         _ ->
-            io:format("Index ~p~n", ["UsableIndexes"]),
             create_cursor(Db, UsableIndexes, Selector, Opts)
     end.
 
@@ -117,9 +115,9 @@ group_indexes_by_type(Indexes) ->
     % queries.
     CursorModules = case module_loaded(dreyfus_index) of
         true ->
-            [mango_cursor_view, mango_cursor_text];
+            [mango_cursor_view, mango_cursor_text, mango_cursor_special];
         false ->
-            [mango_cursor_view]
+            [mango_cursor_view, mango_cursor_special]
     end,
     lists:flatmap(fun(CMod) ->
         case dict:find(CMod, IdxDict) of
