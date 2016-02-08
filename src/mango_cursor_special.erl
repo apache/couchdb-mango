@@ -58,4 +58,4 @@ execute(Cursor0, UserFun, UserAcc) ->
     mango_cursor_view:execute(Cursor0, UserFun, UserAcc).
 
 handle_message(Msg, Cursor) ->
-    mango_cursor_view:mango_cursor_view(Msg, Cursor).
+    mango_cursor_view:handle_message(Msg, Cursor).
