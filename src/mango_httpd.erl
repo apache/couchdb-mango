@@ -236,7 +236,7 @@ maybe_add_warning(Db, Selector, Opts) ->
     UsableIndexes = mango_idx:get_usable_indexes(Db, Selector, Opts),
     case length(UsableIndexes) of
         0 ->
-            "{\"_warning\":\"no matching index found, create an index to optimize query time\",\r\n\"docs\":[";
+            "{\"warning\":\"no matching index found, create an index to optimize query time\",\r\n\"docs\":[";
         _ ->
             "{\"docs\":["
     end.
