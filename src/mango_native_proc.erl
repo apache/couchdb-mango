@@ -104,6 +104,16 @@ handle_call({prompt, [<<"index_doc">>, Doc]}, _From, St) ->
     end,
     {reply, Vals, St};
 
+handle_call({prompt, [<<"st_index_doc">>, Doc]}, _From, St) ->
+    twig:log(notice, "Come in here st_index_doc"),
+    Vals = case st_index_doc(St, mango_json:to_binary(Doc)) of
+        [] ->
+            [];
+        Else ->
+            Else
+    end,
+    {reply, Vals, St};
+
 
 handle_call(Msg, _From, St) ->
     {stop, {invalid_call, Msg}, {invalid_call, Msg}, St}.
@@ -132,6 +142,10 @@ map_doc(#st{indexes=Indexes}, Doc) ->
 index_doc(#st{indexes=Indexes}, Doc) ->
     lists:map(fun(Idx) -> get_text_entries(Idx, Doc) end, Indexes).
 
+%% Geo and views have the same structure, so we can re-use
+%% same functionality.
+st_index_doc(#st{indexes=Indexes}, Doc) ->
+    lists:map(fun(Idx) -> get_geo_entries(Idx, Doc) end, Indexes).
 
 get_index_entries({IdxProps}, Doc) ->
     {Fields} = couch_util:get_value(<<"fields">>, IdxProps),
@@ -147,6 +161,23 @@ get_index_entries({IdxProps}, Doc) ->
             [];
         false ->
             [[Values, null]]
+    end.
+
+get_geo_entries({IdxProps}, Doc) ->
+    {Fields} = couch_util:get_value(<<"fields">>, IdxProps),
+    twig:log(notice, "Fields ~p Doc ~p", [Fields, Doc]),
+    Values = lists:map(fun({Field, _Dir}) ->
+        case mango_doc:get_field(Doc, Field) of
+            not_found -> not_found;
+            bad_path -> not_found;
+            Else -> [Else, null]
+        end
+    end, Fields),
+    case lists:member(not_found, Values) of
+        true ->
+            [];
+        false ->
+            Values
     end.
 
 

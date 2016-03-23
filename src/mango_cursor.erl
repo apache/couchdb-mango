@@ -113,11 +113,16 @@ group_indexes_by_type(Indexes) ->
     % used to service this query. This is so that we
     % don't suddenly switch indexes for existing client
     % queries.
-    CursorModules = case module_loaded(dreyfus_index) of
-        true ->
-            [mango_cursor_view, mango_cursor_text, mango_cursor_special];
-        false ->
-            [mango_cursor_view, mango_cursor_special]
+    Loaded = {module_loaded(dreyfus_index), module_loaded(hastings_index)},
+    CursorModules = case Loaded of
+        {true, true} ->
+            [mango_cursor_view, mango_cursor_text, mango_cursor_geo];
+        {true, false} ->
+            [mango_cursor_view, mango_cursor_text];
+        {false, true} ->
+            [mango_cursor_view, mango_cursor_geo];
+        {false, false} ->
+            [mango_cursor_view]
     end,
     lists:flatmap(fun(CMod) ->
         case dict:find(CMod, IdxDict) of

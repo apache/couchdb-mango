@@ -163,8 +163,8 @@ norm_ops({[{<<"$gt">>, _}]} = Cond) ->
 % Known but unsupported operators
 norm_ops({[{<<"$where">>, _}]}) ->
     ?MANGO_ERROR({not_supported, '$where'});
-norm_ops({[{<<"$geoWithin">>, _}]}) ->
-    ?MANGO_ERROR({not_supported, '$geoWithin'});
+norm_ops({[{<<"$geoWithin">>, Arg}]}) ->
+    {[{<<"$geoWithin">>, Arg}]};
 norm_ops({[{<<"$geoIntersects">>, _}]}) ->
     ?MANGO_ERROR({not_supported, '$geoIntersects'});
 norm_ops({[{<<"$near">>, _}]}) ->

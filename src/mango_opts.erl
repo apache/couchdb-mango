@@ -154,6 +154,7 @@ validate(Props, Opts) ->
             ?MANGO_ERROR({invalid_ejson, {Props}})
     end,
     {Rest, Acc} = validate_opts(Opts, Props, []),
+    twig:log(notice, "Rest ~p", [Rest]),
     case Rest of
         [] ->
             ok;

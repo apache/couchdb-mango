@@ -54,6 +54,7 @@
 
 list(Db) ->
     {ok, Indexes} = ddoc_cache:open(db_to_name(Db), ?MODULE),
+    twig:log(notice, "Indexes ~p", [Indexes]),
     Indexes.
 
 get_usable_indexes(Db, Selector0, Opts) ->
@@ -112,6 +113,10 @@ for_sort_int(Indexes, Sort) ->
                 true;
             {<<"text">>, _} ->
                 sets:is_subset(sets:from_list(Fields), sets:from_list(Cols));
+            % need to revisit
+            {<<"geo">>, _} ->
+                % there is no sort parameter for hastings
+                true;
             {<<"json">>, _} ->
                 lists:prefix(Fields, Cols);
             {<<"special">>, _} ->
@@ -188,10 +193,16 @@ from_ddoc(Db, {Props}) ->
         _ ->
             ?MANGO_ERROR(invalid_query_ddoc_language)
     end,
-    IdxMods = case module_loaded(dreyfus_index) of
-        true ->
+    %% this is kinda ugly here, should refactor this later
+    Loaded = {module_loaded(dreyfus_index), module_loaded(hastings_index)},
+    IdxMods = case Loaded of
+        {true, true} ->
+            [mango_idx_view, mango_idx_text, mango_idx_geo];
+        {true, false} ->
             [mango_idx_view, mango_idx_text];
-        false ->
+        {false, true} ->
+            [mango_idx_view, mango_idx_geo];
+        {false, false} ->
             [mango_idx_view]
     end,
     Idxs = lists:flatmap(fun(Mod) -> Mod:from_ddoc({Props}) end, IdxMods),
@@ -274,6 +285,14 @@ cursor_mod(#idx{type = <<"text">>}) ->
             mango_cursor_text;
         false ->
             ?MANGO_ERROR({index_service_unavailable, <<"text">>})
+    end;
+%% new geo
+cursor_mod(#idx{type = <<"geo">>}) ->
+    case module_loaded(hastings_index) of
+        true ->
+            mango_cursor_geo;
+        false ->
+            ?MANGO_ERROR({index_service_unavailable, <<"geo">>})
     end.
 
 
@@ -287,6 +306,13 @@ idx_mod(#idx{type = <<"text">>}) ->
             mango_idx_text;
         false ->
             ?MANGO_ERROR({index_service_unavailable, <<"text">>})
+    end;
+idx_mod(#idx{type = <<"geo">>}) ->
+    case module_loaded(hastings_index) of
+        true ->
+            mango_idx_geo;
+        false ->
+            ?MANGO_ERROR({index_service_unavailable, <<"geo">>})
     end.
 
 
@@ -315,6 +341,12 @@ get_idx_type(Opts) ->
                 <<"text">>;
             false ->
                 ?MANGO_ERROR({index_service_unavailable, <<"text">>})
+            end;
+        <<"geo">> -> case module_loaded(hastings_index) of
+            true ->
+                <<"geo">>;
+            false ->
+                ?MANGO_ERROR({index_service_unavailable, <<"geo">>})
             end;
         %<<"geo">> -> <<"geo">>;
         undefined -> <<"json">>;

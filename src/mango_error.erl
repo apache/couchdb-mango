@@ -141,6 +141,18 @@ info(mango_idx, {index_service_unavailable, IndexName}) ->
         fmt("~s", [IndexName])
     };
 
+info(mango_idx_geo, {invalid_index_geo, BadIdx}) ->
+    {
+        400,
+        <<"invalid_index">>,
+        fmt("Geo indexes must be an object, not: ~w", [BadIdx])
+    };
+info(mango_idx_geo, {index_not_found, BadIdx}) ->
+    {
+        404,
+        <<"invalid_index">>,
+        fmt("Geo index ~s not found in this design doc.", [BadIdx])
+    };
 info(mango_idx_view, {invalid_index_json, BadIdx}) ->
     {
         400,
