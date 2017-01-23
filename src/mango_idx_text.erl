@@ -223,6 +223,11 @@ opts() ->
             {optional, true},
             {default, {[]}}
         ]},
+        {<<"custom_field_analyzers">>, [
+            {tag, custom_field_analyzers},
+            {optional, true},
+            {default, []}
+        ]},
          {<<"selector">>, [
             {tag, selector},
             {optional, true},
@@ -267,24 +272,30 @@ get_default_field_options(Props) ->
     end.
 
 
+get_custom_analyzers(Props)->
+    Analyzers = couch_util:get_value(custom_field_analyzers, Props, []),
+    [{mango_util:lucene_escape_user(F), A} || {[{F, A}]} <- Analyzers].
+
+
 construct_analyzer({Props}) ->
     DefaultAnalyzer = couch_util:get_value(default_analyzer, Props,
         <<"keyword">>),
+    CustomAnalyzers = get_custom_analyzers(Props),
     {DefaultField, DefaultFieldAnalyzer} = get_default_field_options(Props),
-    DefaultAnalyzerDef = case DefaultField of
+    AnalyzerDef = case DefaultField of
         true ->
-            [{<<"$default">>, DefaultFieldAnalyzer}];
+            [{<<"$default">>, DefaultFieldAnalyzer}] ++ CustomAnalyzers;
         _ ->
-            []
+            CustomAnalyzers
     end,
-    case DefaultAnalyzerDef of
+    case AnalyzerDef of
         [] ->
             <<"keyword">>;
         _ ->
             {[
                 {<<"name">>, <<"perfield">>},
                 {<<"default">>, DefaultAnalyzer},
-                {<<"fields">>, {DefaultAnalyzerDef}}
+                {<<"fields">>, {AnalyzerDef}}
             ]}
     end.
 

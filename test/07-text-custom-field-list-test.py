@@ -145,3 +145,67 @@ class CustomFieldsTest(mango.UserDocsTextTests):
             {"location.state": "Don't Exist"}]})
         assert len(docs) == 1
         assert docs[0]["user_id"] == 10
+
+
+@unittest.skipUnless(mango.has_text_service(), "requires text service")
+class CustomAnalyzerTests(mango.UserDocsTests):
+
+    @classmethod
+    def setUpClass(klass):
+        super(CustomAnalyzerTests, klass).setUpClass()
+        if mango.has_text_service():
+            klass.db.create_text_index(ddoc="cfa_1",
+                analyzer="standard",
+                custom_field_analyzers =[
+                    {"location.address.street:string" : "keyword"}
+                ]
+            )
+            klass.db.create_text_index(ddoc="cfa_2",
+                custom_field_analyzers=[
+                    {"location.address.street:string" : "standard"}
+                ]
+            )
+            klass.db.create_text_index(ddoc="cfa_3",
+                fields = [
+                    {"name": "location.state", "type": "string"},
+                    {"name": "location.address.street", "type": "string"}
+                ],
+                custom_field_analyzers=[
+                    {"location.state:string" : "standard"},
+                    {"location.address.street:string" : "keyword"}
+                ]
+            )
+
+    # Because of our filter, we need to add in $text:ignorecase as
+    # a no-op to bypass the filter
+    def test_standard_default_custom_keyword(self):
+        q = {"$or": [{"$text": "ignorecase"}, {"location.state": "new"},
+            {"location.state": "hawaii"}]}
+        docs = self.db.find(q, sort=["location.address.street:string"],
+            use_index="_design/cfa_1")
+
+        assert len(docs) == 3
+        assert docs[0]["location"]["address"]["street"] == "Bancroft Place"
+        assert docs[1]["location"]["address"]["street"] == "Miller Avenue"
+        assert docs[2]["location"]["address"]["street"] == "Nostrand Avenue"
+
+    def test_keyword_default_custom_standard(self):
+        q = {"$or": [{"$text": "ignorecase"},
+            {"location.address.street": "avenue"}]}
+        docs = self.db.find(q, sort=["location.state:string"],
+            use_index="_design/cfa_2")
+
+        assert len(docs) == 6
+        assert docs[0]["location"]["state"] == "Maine"
+        assert docs[5]["location"]["state"] == "North Dakota"
+
+    def test_custom_fields_custom_analyzers(self):
+        q = {"$or": [{"$text": "ignorecase"}, {"location.state": "new"},
+            {"location.state": "hawaii"}]}
+        docs = self.db.find(q, sort=["location.address.street:string"],
+            use_index="_design/cfa_3")
+
+        assert len(docs) == 3
+        assert docs[0]["location"]["address"]["street"] == "Bancroft Place"
+        assert docs[1]["location"]["address"]["street"] == "Miller Avenue"
+        assert docs[2]["location"]["address"]["street"] == "Nostrand Avenue"
