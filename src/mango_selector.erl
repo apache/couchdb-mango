@@ -59,7 +59,10 @@ match(Selector, #doc{body=Body}) ->
     match(Selector, Body, fun mango_json:cmp/2);
 
 match(Selector, {Props}) ->
-    match(Selector, {Props}, fun mango_json:cmp/2).
+    case mango_doc:get_field({Props}, <<"_id">>) of
+        <<"_design/", _/binary>> -> false;
+        _ -> match(Selector, {Props}, fun mango_json:cmp/2)
+    end.
 
 % Convert each operator into a normalized version as well
 % as convert an implict operators into their explicit
