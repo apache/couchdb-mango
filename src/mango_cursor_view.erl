@@ -171,13 +171,14 @@ handle_message(complete, Cursor) ->
 handle_message({error, Reason}, _Cursor) ->
     {error, Reason}.
 
+
 handle_all_docs_message({row, Props}, Cursor) ->
     case is_design_doc(Props) of
         true -> {ok, Cursor};
         false -> handle_message({row, Props}, Cursor)
     end;
-handle_all_docs_message(_Message, _Cursor) ->
-    handle_message(_Message, _Cursor).
+handle_all_docs_message(Message, Cursor) ->
+    handle_message(Message, Cursor).
 
 
 handle_doc(#cursor{skip = S} = C, _) when S > 0 ->
@@ -265,7 +266,6 @@ doc_member(Db, RowProps, Opts) ->
             end
     end.
 
-%do this check here as its only in the _all_docs that it returns design docs when we don't want it to
 is_design_doc(RowProps) ->
     case couch_util:get_value(id, RowProps) of
         <<"_design/", _/binary>> -> true;
